@@ -1,0 +1,15 @@
+import { chromium } from 'playwright-core';
+const S = process.argv[2];
+const b = await chromium.launch({ executablePath: process.env.HOME + '/.cache/ms-playwright/chromium-1237/chrome-linux64/chrome' });
+const p = await (await b.newContext({ viewport: { width: 1300, height: 900 } })).newPage();
+await p.goto('http://localhost:4174/'); await p.waitForSelector('.day');
+await p.click('.sync-btn'); await p.click('text=Start syncing');
+await p.waitForSelector('.status[data-state="online"]', { timeout: 15000 });
+await p.click('.meta-links .link >> nth=0');
+await p.click('text=Test relays');
+await p.waitForSelector('text=Test relays', { timeout: 60000 });
+const rows = await p.locator('.results li').allTextContents();
+console.log(rows.map(s => s.replace(/\s+/g, ' ')).join('\n'));
+console.log('use button:', await p.locator('button:has-text("working relay")').textContent().catch(() => 'none'));
+await p.screenshot({ path: `${S}/reltest.png` });
+await b.close();

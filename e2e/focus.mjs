@@ -1,0 +1,22 @@
+import { chromium } from 'playwright-core';
+const S = process.argv[2];
+const b = await chromium.launch({ executablePath: process.env.HOME + '/.cache/ms-playwright/chromium-1237/chrome-linux64/chrome' });
+const p = await (await b.newContext({ viewport: { width: 1440, height: 820 } })).newPage();
+const errs = []; p.on('pageerror', e => errs.push(e.message));
+await p.goto('http://localhost:4174/'); await p.waitForSelector('.day'); await p.waitForTimeout(400);
+const widths = () => p.locator('.day').evaluateAll(els => els.map(e => Math.round(e.getBoundingClientRect().width)));
+console.log('initial (Tue=today wide):', await widths());
+const thu = p.locator('.day').nth(3);
+const box = await thu.boundingBox();
+await p.mouse.click(box.x + box.width / 2, box.y + 400); await p.waitForTimeout(400);
+console.log('after clicking Thu:      ', await widths(), '| Thu label:', await thu.locator('.dow').textContent());
+await p.screenshot({ path: `${S}/focus-thu.png` });
+await p.locator('.day').nth(5).locator('.head').click(); await p.waitForTimeout(400);
+console.log('after clicking Sat head: ', await widths());
+await p.keyboard.press('ArrowRight'); await p.waitForTimeout(400); await p.keyboard.press('ArrowLeft'); await p.waitForTimeout(400);
+console.log('next week and back:      ', await widths());
+// card click still opens the dialog
+await p.locator('.day').nth(0).locator('.card .body').first().click(); await p.waitForTimeout(300);
+console.log('dialog open after card click:', await p.locator('dialog.sheet[open]').count(), '| widths:', await widths());
+console.log('errors:', errs.length ? errs : 'none');
+await b.close();
