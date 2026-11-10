@@ -1,7 +1,7 @@
 import { eq, isNull } from 'drizzle-orm';
 import { openDatabase, type Database } from '../db/client';
 import { outbox, settings as settingsTable, tasks as tasksTable, type Clocks, type Task } from '../db/schema';
-import { addDays, isValidDay, startOfWeek, today as todayDay, type Day } from './dates';
+import { addDays, isValidDay, startOfWeek, today as todayDay, weekDays, type Day } from './dates';
 import { byOrder, datesAfterMove, isUnscheduled, orderBetween, placementsForDay } from './plan';
 import { seedTasks } from './seed';
 import { Hlc, encode } from '../sync/hlc';
@@ -69,6 +69,8 @@ class AppStore {
   today = $state<Day>(todayDay());
   weekStart = $state<Day>(startOfWeek(todayDay()));
   openTaskId = $state<string | null>(null);
+  /** Day the user clicked in the desktop grid; it gets the wide column. */
+  focusDay = $state<Day | null>(null);
   /** Day whose quick-add input should open (keyboard shortcut N). */
   quickAddDay = $state<Day | null>(null);
   toasts = $state<Toast[]>([]);
@@ -93,6 +95,13 @@ class AppStore {
         this.tasks = [];
       },
     });
+  }
+
+  /** The wide column: the focused day, else today when it is in the shown week. */
+  get wideDay(): Day | null {
+    const days = weekDays(this.weekStart);
+    if (this.focusDay && days.includes(this.focusDay)) return this.focusDay;
+    return days.includes(this.today) ? this.today : null;
   }
 
   get openTask(): Task | undefined {
@@ -277,10 +286,12 @@ class AppStore {
 
   goWeek(delta: number) {
     this.weekStart = addDays(this.weekStart, 7 * delta);
+    this.focusDay = null;
   }
 
   goToday() {
     this.weekStart = startOfWeek(this.today);
+    this.focusDay = null;
   }
 
   // ---------- tasks ----------

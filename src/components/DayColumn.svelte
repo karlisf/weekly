@@ -11,6 +11,10 @@
   let { day }: { day: Day } = $props();
 
   const isToday = $derived(day === app.today);
+  const wide = $derived(!layout.mobile && day === app.wideDay);
+  const focus = () => {
+    if (!layout.mobile) app.focusDay = day;
+  };
   const isPast = $derived(day < app.today);
   const weekend = $derived(isWeekend(day));
   const placements = $derived(placementsForDay(app.tasks, day, app.today, app.weekStart));
@@ -30,8 +34,12 @@
   });
 </script>
 
+<!-- Clicking anywhere in a column widens it (mouse convenience); the header button does the same from the keyboard. -->
+<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
 <section
   class="day"
+  class:wide
+  onclick={focus}
   class:today={isToday}
   class:past={isPast}
   class:weekend
@@ -40,14 +48,14 @@
   data-drop-day={day}
   aria-label={fmt(day, { weekday: 'long', day: 'numeric', month: 'long' })}
 >
-  <header class="head">
-    <span class="dow">{fmt(day, { weekday: isToday || (layout.mobile && !weekend) ? 'long' : 'short' })}</span>
+  <button class="head" aria-pressed={wide} aria-label="Widen {fmt(day, { weekday: 'long', day: 'numeric' })}" onclick={focus}>
+    <span class="dow">{fmt(day, { weekday: wide || (layout.mobile && !weekend) ? 'long' : 'short' })}</span>
     <span class="num">{fmt(day, { day: 'numeric' })}</span>
     {#if isToday}<span class="today-tag">Today</span>{/if}
     {#if placements.length}
       <span class="count" title="{doneCount} of {placements.length} done">{doneCount}/{placements.length}</span>
     {/if}
-  </header>
+  </button>
 
   <div class="list" data-scroll>
     {#each placements as p (p.task.id)}
@@ -97,6 +105,14 @@
   }
 
   .head {
+    width: 100%;
+    margin: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
     display: flex;
     align-items: baseline;
     flex-wrap: wrap;
@@ -182,7 +198,7 @@
     background: color-mix(in srgb, var(--accent-soft) 70%, transparent);
     color: var(--accent);
   }
-  .day:not(:hover):not(.today) .add span {
+  .day:not(:hover):not(.wide) .add span {
     opacity: 0;
   }
   .day:focus-within .add span {

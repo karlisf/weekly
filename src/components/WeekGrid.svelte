@@ -5,11 +5,12 @@
 
   const days = $derived(weekDays(app.weekStart));
 
-  // Weekdays share space equally, the weekend gets less, today gets more.
+  // Weekdays share space equally, the weekend gets less, and the wide day
+  // (the clicked one, or today) gets the most.
   const columns = $derived(
     days
       .map((d) => {
-        if (d === app.today) return isWeekend(d) ? 'minmax(170px, 1.45fr)' : 'minmax(190px, 1.7fr)';
+        if (d === app.wideDay) return 'minmax(190px, 1.7fr)';
         return isWeekend(d) ? 'minmax(92px, 0.62fr)' : 'minmax(118px, 1fr)';
       })
       .join(' '),
@@ -33,6 +34,7 @@
   .grid {
     display: grid;
     height: 100%;
+    transition: grid-template-columns 0.22s ease;
     border-left: 1px solid var(--line);
   }
 </style>
