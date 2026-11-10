@@ -82,8 +82,13 @@
     <section>
       <h3>Backup</h3>
       <p class="muted">
-        {app.persistent ? 'Your tasks are stored in this browser only.' : 'This browser is not keeping your tasks.'}
+        {app.persistent
+          ? app.settings.sync
+            ? 'Your tasks are stored in this browser and synced to your other devices.'
+            : 'Your tasks are stored in this browser only.'
+          : 'This browser is not keeping your tasks.'}
         A backup file restores them here or on another device. Importing keeps whichever copy of a task was edited last.
+        {#if app.settings.sync}The SQLite file also contains your sync key, so keep it private.{/if}
       </p>
       <div class="row">
         <button class="btn" onclick={exportJson}>Export backup</button>
@@ -111,7 +116,7 @@
       </dl>
     </section>
 
-    <p class="muted small">Device ID {app.settings.deviceId.slice(0, 8)} · sync between devices is planned</p>
+    <p class="muted small">Device ID {app.settings.deviceId.slice(0, 8)}</p>
   </div>
 </dialog>
 

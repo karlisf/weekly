@@ -10,11 +10,23 @@
   import Backlog from './components/Backlog.svelte';
   import TaskDialog from './components/TaskDialog.svelte';
   import SettingsDialog from './components/SettingsDialog.svelte';
+  import SyncDialog from './components/SyncDialog.svelte';
   import Toasts from './components/Toasts.svelte';
   import Icon from './components/Icon.svelte';
 
   let backlogOpen = $state(false);
   let settingsOpen = $state(false);
+  let syncOpen = $state(false);
+  const sync = app.sync;
+  const syncLabel = $derived(
+    !sync.space
+      ? 'Sync'
+      : sync.status === 'offline'
+        ? 'Offline'
+        : sync.status === 'connecting' || sync.pending
+          ? 'Syncing'
+          : 'Synced',
+  );
   let installEvent = $state<(Event & { prompt: () => Promise<void> }) | null>(null);
 
   const isCurrentWeek = $derived(app.weekStart === startOfWeek(app.today));
@@ -90,6 +102,16 @@
           {#if delayedCount}<span class="badge late">{delayedCount}</span>{/if}
         </button>
       {/if}
+      <button
+        class="sync-btn"
+        data-state={sync.space ? sync.status : 'none'}
+        aria-label="Sync: {syncLabel}{sync.pending ? `, ${sync.pending} waiting` : ''}"
+        onclick={() => (syncOpen = true)}
+      >
+        <Icon name={sync.status === 'offline' ? 'cloudOff' : 'cloud'} />
+        <span class="sync-label">{syncLabel}</span>
+        {#if sync.space}<span class="sync-dot" aria-hidden="true"></span>{/if}
+      </button>
       <button class="icon-btn" aria-label="Settings" onclick={() => (settingsOpen = true)}><Icon name="more" /></button>
     </div>
   </header>
@@ -144,6 +166,7 @@
   {/if}
 
   <TaskDialog />
+  <SyncDialog bind:open={syncOpen} />
   <SettingsDialog bind:open={settingsOpen} installPrompt={installEvent ? () => installEvent?.prompt() : null} />
   <Toasts />
 </div>
@@ -229,6 +252,42 @@
     align-items: center;
     gap: 6px;
     margin-left: auto;
+  }
+  .sync-btn {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 36px;
+    padding: 0 10px;
+    border: 0;
+    border-radius: var(--r-sm);
+    background: transparent;
+    color: var(--ink-2);
+    font-weight: 550;
+  }
+  .sync-btn:hover {
+    background: var(--accent-soft);
+    color: var(--ink);
+  }
+  .sync-dot {
+    position: absolute;
+    left: 22px;
+    top: 9px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    border: 1.5px solid var(--bg);
+    background: var(--ink-3);
+  }
+  .sync-btn[data-state='online'] .sync-dot {
+    background: var(--done);
+  }
+  .sync-btn[data-state='connecting'] .sync-dot {
+    background: var(--hl);
+  }
+  .sync-btn[data-state='offline'] .sync-dot {
+    background: var(--late);
   }
   .badge {
     padding: 1px 7px;
@@ -405,6 +464,13 @@
     }
     .actions {
       margin-left: 0;
+      gap: 0;
+    }
+    .sync-label {
+      display: none;
+    }
+    .sync-btn {
+      padding: 0 9px;
     }
   }
 </style>

@@ -1,6 +1,19 @@
 import { addDays, type Day } from './dates';
 import type { Task } from '../db/schema';
 
+const EXAMPLE_TITLES = new Set([
+  'Drag this card to another day',
+  'Open a task to add notes and dates',
+  'Three-day task: plan the week',
+  'Missed yesterday, so it is delayed',
+  'Something for whenever',
+]);
+
+/** True for the untouched first-run examples. */
+export function isExampleTask(t: Pick<Task, 'title'>): boolean {
+  return EXAMPLE_TITLES.has(t.title);
+}
+
 /** First-run tasks that show how the planner works. Delete them any time. */
 export function seedTasks(today: Day): Task[] {
   const now = Date.now();
@@ -15,6 +28,7 @@ export function seedTasks(today: Day): Task[] {
     createdAt: now + i,
     updatedAt: now + i,
     deletedAt: null,
+    clocks: {},
   });
   return [
     make('Drag this card to another day', today, null, 'On a phone, press and hold a card to pick it up.', 0),

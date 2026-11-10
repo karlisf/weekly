@@ -11,6 +11,10 @@
     inbox: 'M4 13l2.5-8h11L20 13M4 13v6h16v-6M4 13h5l1 2h4l1-2h5',
     span: 'M4 12h16M8 8l-4 4 4 4M16 8l4 4-4 4',
     clock: 'M12 7v5l3 2M21 12a9 9 0 11-18 0 9 9 0 0118 0z',
+    cloud: 'M7 18h10.5a4 4 0 00.4-7.98A6 6 0 006.2 8.6 4.7 4.7 0 007 18z',
+    cloudOff: 'M3 3l18 18M8.5 6.6A6 6 0 0117.9 10a4 4 0 012.4 6.6M17 18H7a4.7 4.7 0 01-1.3-9.2',
+    device: 'M8 3h8a1 1 0 011 1v16a1 1 0 01-1 1H8a1 1 0 01-1-1V4a1 1 0 011-1zM11 18h2',
+    refresh: 'M20 11a8 8 0 10-2.3 5.7M20 4v7h-7',
   } as const;
   let { name, size = 18 }: { name: keyof typeof paths; size?: number } = $props();
 </script>

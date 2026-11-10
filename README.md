@@ -20,7 +20,8 @@ npm run preview    # serve dist/ (service worker active)
 - **Multi-day tasks** show on every day of their span. The first day, today and Monday show a full card; the days in between show a slim line.
 - **Delayed**: an open task whose last day has passed. It stays visible on its old day and is also listed under Delayed in the backlog.
 - **No date**: tasks without a day. They are listed in the backlog and also shown on today's column with a dashed outline (you can turn this off in Settings).
-- Backup export/import (JSON, merged by last edit) and a raw `.sqlite3` download, in Settings.
+- **Sync** across devices and people via public Nostr relays, with code pairing (see below).
+- Backup export/import (JSON, merged with the same rule as sync) and a raw `.sqlite3` download, in Settings.
 
 ## Layouts
 
@@ -39,6 +40,11 @@ src/
     worker.ts     SQLite (official sqlite-wasm) in a Web Worker, stored in OPFS
     client.ts     Promise RPC to the worker + Drizzle "sqlite-proxy" driver
     migrate.ts    applies drizzle-kit migrations in the browser on startup
+  sync/
+    hlc.ts        hybrid logical clock
+    merge.ts      per-field "newest wins" merge (unit-tested)
+    crypto.ts     space keys, encryption, pairing codes (WebCrypto)
+    engine.svelte.ts  Nostr relays: subscribe, outbox, presence, pairing
   lib/
     plan.ts       pure rules: placement, delayed, multi-day, drag → new dates (unit-tested)
     dates.ts      local calendar-day helpers ('YYYY-MM-DD', Monday weeks, ISO week no.)
@@ -60,4 +66,6 @@ drizzle/          generated SQL migrations (committed)
 
 ## Sync between devices
 
-Not built yet. The data model is already prepared for it; see [docs/SYNC.md](docs/SYNC.md).
+Open **Sync** in the top bar. The first device starts a shared planner; other devices (or other people) join with a 12-character code that expires after 10 minutes. Changes are encrypted on the device and travel through public Nostr relays, live when devices are online and held by the relays when they're not. Details: [docs/SYNC.md](docs/SYNC.md).
+
+For local development, `npm run relay` starts a small relay on `ws://localhost:7777`; run the app with `VITE_DEFAULT_RELAYS=ws://localhost:7777 npm run dev`.

@@ -1,9 +1,12 @@
 import { eq, isNull } from 'drizzle-orm';
 import { openDatabase, type Database } from '../db/client';
-import { settings as settingsTable, tasks as tasksTable, type Task } from '../db/schema';
+import { outbox, settings as settingsTable, tasks as tasksTable, type Clocks, type Task } from '../db/schema';
 import { addDays, isValidDay, startOfWeek, today as todayDay, type Day } from './dates';
 import { byOrder, datesAfterMove, isUnscheduled, orderBetween, placementsForDay } from './plan';
 import { seedTasks } from './seed';
+import { Hlc, encode } from '../sync/hlc';
+import { FIELD_KEYS, fieldsOf, maxClock, mergeTask, stamp } from '../sync/merge';
+import { SyncEngine, type SpaceConfig } from '../sync/engine.svelte';
 
 export type Theme = 'system' | 'light' | 'dark';
 
@@ -11,12 +14,29 @@ export interface Settings {
   theme: Theme;
   /** Show open "no date" tasks in a pencilled-in section on today's column. */
   unscheduledOnToday: boolean;
-  /** Random per-install id; future sync uses it to tell devices apart. */
+  /** Random per-install id; also the node id in sync clocks. */
   deviceId: string;
   seeded: boolean;
+  /** Name shown to other devices in a sync space. Empty = guessed from the browser. */
+  deviceName: string;
+  /** Sync space this device belongs to, or null. */
+  sync: SpaceConfig | null;
+  /** Newest relay event time seen (unix seconds). */
+  syncCursor: number;
+  /** This device's Nostr signing key (hex). Never leaves the device. */
+  nostrKey: string;
 }
 
-const DEFAULTS: Settings = { theme: 'system', unscheduledOnToday: true, deviceId: '', seeded: false };
+const DEFAULTS: Settings = {
+  theme: 'system',
+  unscheduledOnToday: true,
+  deviceId: '',
+  seeded: false,
+  deviceName: '',
+  sync: null,
+  syncCursor: 0,
+  nostrKey: '',
+};
 
 export type Status =
   | { kind: 'loading' }
@@ -53,9 +73,27 @@ class AppStore {
   quickAddDay = $state<Day | null>(null);
   toasts = $state<Toast[]>([]);
 
+  readonly sync: SyncEngine;
+
   private database: Database | null = null;
+  private clock: Hlc | null = null;
   private releaseLock: (() => void) | null = null;
   private toastSeq = 0;
+
+  constructor() {
+    this.sync = new SyncEngine({
+      db: () => this.db,
+      hlc: () => this.hlc,
+      getSetting: <T>(key: string) => (this.settings as unknown as Record<string, unknown>)[key] as T | undefined,
+      setSetting: (key, value) => this.setSetting(key as keyof Settings, value as never),
+      onRemoteTasks: (rows) => this.onRemoteTasks(rows),
+      clearLocalTasks: async () => {
+        await this.db.delete(tasksTable);
+        await this.db.delete(outbox);
+        this.tasks = [];
+      },
+    });
+  }
 
   get openTask(): Task | undefined {
     return this.tasks.find((t) => t.id === this.openTaskId);
@@ -99,6 +137,7 @@ class AppStore {
 
   private async handOver() {
     this.openTaskId = null;
+    this.sync.stop();
     const db = this.database;
     this.database = null;
     await db?.close();
@@ -113,13 +152,37 @@ class AppStore {
       this.persistent = this.database.info.persistent;
       if (this.persistent) void navigator.storage?.persist?.();
       await this.loadSettings();
+      this.clock = new Hlc(this.settings.deviceId.replace(/-/g, '').slice(0, 8));
+      await this.prepareClocks();
       if (!this.settings.seeded) await this.seed();
       await this.reload();
       this.status = { kind: 'ready' };
+      await this.sync.start();
     } catch (err) {
       console.error(err);
       this.status = { kind: 'error', message: String((err as Error)?.message ?? err) };
     }
+  }
+
+  /**
+   * Restore the clock past every stored timestamp, and give tasks created
+   * before sync existed a clock derived from their last edit time.
+   */
+  private async prepareClocks() {
+    const all = await this.db.select().from(tasksTable);
+    const legacy: Task[] = [];
+    for (const t of all) {
+      this.hlc.observe(maxClock(t));
+      if (FIELD_KEYS.some((k) => !t.clocks[k])) legacy.push(t);
+    }
+    if (!legacy.length) return;
+    const writes = legacy.map((t) => {
+      const ts = encode(t.updatedAt, 0, this.hlc.node);
+      const clocks: Clocks = { ...t.clocks };
+      for (const k of FIELD_KEYS) clocks[k] ??= ts;
+      return this.db.update(tasksTable).set({ clocks }).where(eq(tasksTable.id, t.id));
+    });
+    await this.db.batch(writes as [(typeof writes)[number], ...typeof writes]);
   }
 
   private watchClock() {
@@ -139,6 +202,11 @@ class AppStore {
     return this.database.db;
   }
 
+  private get hlc() {
+    if (!this.clock) throw new Error('Clock is not ready');
+    return this.clock;
+  }
+
   async reload() {
     this.tasks = await this.db.select().from(tasksTable).where(isNull(tasksTable.deletedAt));
   }
@@ -152,6 +220,26 @@ class AppStore {
       this.toast(`Couldn't save the change: ${(err as Error).message}`);
       await this.reload();
     }
+  }
+
+  /** Write a task and queue it for sync. */
+  private async save(t: Task) {
+    const row = $state.snapshot(t) as Task;
+    await this.persist(async () => {
+      await this.db.insert(tasksTable).values(row).onConflictDoUpdate({ target: tasksTable.id, set: row });
+      await this.sync.enqueue([row.id]);
+    });
+  }
+
+  /** Remote changes arrived: update the in-memory list to match. */
+  private onRemoteTasks(rows: Task[]) {
+    const byId = new Map(this.tasks.map((t) => [t.id, t]));
+    for (const r of rows) {
+      if (r.deletedAt != null) byId.delete(r.id);
+      else byId.set(r.id, r);
+    }
+    this.tasks = [...byId.values()];
+    if (this.openTaskId && !byId.has(this.openTaskId)) this.openTaskId = null;
   }
 
   // ---------- settings ----------
@@ -179,7 +267,8 @@ class AppStore {
   }
 
   private async seed() {
-    const rows = seedTasks(this.today);
+    const ts = this.hlc.tick();
+    const rows = seedTasks(this.today).map((t) => ({ ...t, clocks: stamp({}, FIELD_KEYS, ts) }));
     if (rows.length) await this.db.insert(tasksTable).values(rows);
     await this.setSetting('seeded', true);
   }
@@ -221,23 +310,28 @@ class AppStore {
       createdAt: now,
       updatedAt: now,
       deletedAt: null,
+      clocks: stamp({}, FIELD_KEYS, this.hlc.tick()),
     };
     this.tasks.push(task);
-    await this.persist(() => this.db.insert(tasksTable).values(task));
+    await this.save(task);
     return task;
   }
 
-  async updateTask(id: string, patch: Partial<Omit<Task, 'id' | 'createdAt'>>) {
+  async updateTask(id: string, patch: Partial<Omit<Task, 'id' | 'createdAt' | 'clocks'>>) {
     const t = this.tasks.find((x) => x.id === id);
     if (!t) return;
-    const clean = { ...patch, updatedAt: Date.now() };
+    const clean: Partial<Task> = { ...patch };
     if ('startDate' in clean && clean.startDate != null && !isValidDay(clean.startDate)) delete clean.startDate;
     Object.assign(t, clean);
     // Keep spans valid: an end before the start, or without a start, is dropped.
     if (t.startDate == null || (t.endDate != null && t.endDate <= t.startDate)) {
       if (t.endDate != null) clean.endDate = t.endDate = null;
     }
-    await this.persist(() => this.db.update(tasksTable).set(clean).where(eq(tasksTable.id, id)));
+    const fields = fieldsOf(clean);
+    if (!fields.length) return;
+    t.updatedAt = Date.now();
+    t.clocks = stamp(t.clocks, fields, this.hlc.tick());
+    await this.save(t);
   }
 
   toggleDone(id: string) {
@@ -248,23 +342,26 @@ class AppStore {
   async deleteTask(id: string) {
     const t = this.tasks.find((x) => x.id === id);
     if (!t) return;
-    const now = Date.now();
+    const removed: Task = {
+      ...$state.snapshot(t),
+      deletedAt: Date.now(),
+      updatedAt: Date.now(),
+      clocks: stamp(t.clocks, ['deleted'], this.hlc.tick()),
+    } as Task;
     this.tasks = this.tasks.filter((x) => x.id !== id);
     if (this.openTaskId === id) this.openTaskId = null;
-    await this.persist(() =>
-      this.db.update(tasksTable).set({ deletedAt: now, updatedAt: now }).where(eq(tasksTable.id, id)),
-    );
+    await this.save(removed);
     this.toast(`Deleted "${t.title}"`, {
       label: 'Undo',
       run: async () => {
-        const restored = { ...t, deletedAt: null, updatedAt: Date.now() };
+        const restored: Task = {
+          ...removed,
+          deletedAt: null,
+          updatedAt: Date.now(),
+          clocks: stamp(removed.clocks, ['deleted'], this.hlc.tick()),
+        };
         this.tasks.push(restored);
-        await this.persist(() =>
-          this.db
-            .update(tasksTable)
-            .set({ deletedAt: null, updatedAt: restored.updatedAt })
-            .where(eq(tasksTable.id, id)),
-        );
+        await this.save(restored);
       },
     });
   }
@@ -291,18 +388,23 @@ class AppStore {
 
   async exportJson(): Promise<Blob> {
     const all = await this.db.select().from(tasksTable);
-    const data = { app: 'weekly', version: 1, exportedAt: new Date().toISOString(), tasks: all };
+    const data = { app: 'weekly', version: 2, exportedAt: new Date().toISOString(), tasks: all };
     return new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
   }
 
-  /** Merge a backup: rows with a newer updatedAt win, so importing twice is harmless. */
+  /** Merge a backup with the same per-field rule sync uses, so importing twice is harmless. */
   async importJson(text: string): Promise<number> {
     const data = JSON.parse(text);
     if (data?.app !== 'weekly' || !Array.isArray(data.tasks)) throw new Error('This file is not a Weekly backup.');
     const existing = new Map((await this.db.select().from(tasksTable)).map((t) => [t.id, t]));
-    let changed = 0;
+    const changed: Task[] = [];
     for (const raw of data.tasks as Task[]) {
       if (typeof raw?.id !== 'string' || typeof raw.title !== 'string') continue;
+      const updatedAt = Number(raw.updatedAt) || Date.now();
+      // Backups from before sync have no clocks: date them by their last edit.
+      const fallback = encode(updatedAt, 0, 'backup');
+      const clocks: Clocks = {};
+      for (const k of FIELD_KEYS) clocks[k] = typeof raw.clocks?.[k] === 'string' ? raw.clocks[k] : fallback;
       const row: Task = {
         id: raw.id,
         title: raw.title,
@@ -312,16 +414,19 @@ class AppStore {
         doneAt: typeof raw.doneAt === 'number' ? raw.doneAt : null,
         sortOrder: Number(raw.sortOrder) || 0,
         createdAt: Number(raw.createdAt) || Date.now(),
-        updatedAt: Number(raw.updatedAt) || Date.now(),
+        updatedAt,
         deletedAt: typeof raw.deletedAt === 'number' ? raw.deletedAt : null,
+        clocks,
       };
-      const cur = existing.get(row.id);
-      if (cur && cur.updatedAt >= row.updatedAt) continue;
-      await this.db.insert(tasksTable).values(row).onConflictDoUpdate({ target: tasksTable.id, set: row });
-      changed++;
+      for (const c of Object.values(clocks)) this.hlc.observe(c);
+      const { task, changed: did } = mergeTask(existing.get(row.id), row);
+      if (!did) continue;
+      await this.db.insert(tasksTable).values(task).onConflictDoUpdate({ target: tasksTable.id, set: task });
+      changed.push(task);
     }
+    await this.sync.enqueue(changed.map((t) => t.id));
     await this.reload();
-    return changed;
+    return changed.length;
   }
 
   async exportDatabaseFile(): Promise<Uint8Array> {

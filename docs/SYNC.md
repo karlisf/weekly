@@ -1,32 +1,53 @@
-# Multi-device sync: design notes
+# Sync
 
-Status: **planned, not implemented.** This records the decisions the current code already makes for sync, and the intended design.
+Weekly syncs tasks between devices, and between people who share a planner, through public Nostr relays. There is no server of our own.
 
-## Already in place
+## How it works
 
-| Decision | Why it matters for sync |
-|---|---|
-| Primary keys are random UUIDs created on the device | Two devices can create tasks offline without id collisions. |
-| Every row has `updated_at` (ms) | Basis for last-writer-wins merging. |
-| Deletes are soft (`deleted_at` tombstone) | A delete can be replicated; a hard delete would be resurrected by the other device. |
-| `sort_order` is fractional | A move changes one row, not every sibling, so concurrent reorders rarely conflict. |
-| Dates are calendar days (`YYYY-MM-DD`), not instants | A task on "Tuesday" stays on Tuesday across time zones. |
-| `settings.deviceId` | Identifies the device, e.g. for tie-breaking equal timestamps. |
-| Index on `tasks.updated_at` | "Rows changed since X" is cheap. |
-| JSON import already merges by `updated_at` | The same merge rule a live sync will use. |
+- **Local first.** Every device has the full database and works offline. Sync exchanges changes whenever a relay can be reached.
+- **Merge rule: per field, newest wins.** Each task stores a hybrid logical clock (HLC) per field group: `title`, `notes`, `dates` (start and end together), `done`, `order`, `deleted`. When two copies of a task meet, each group takes the value with the higher clock. The rule gives the same result in any order and when applied twice, so devices converge.
+  - Edits to different fields on two offline devices both survive.
+  - When two devices edit the same field, the later edit wins and the other is lost. Conflicts are not shown to the user (deliberately simple for now).
+- **Delivery: Nostr relays.** Each task is published as an encrypted, replaceable event (kind 30078, NIP-78 app data). Relays keep the latest version per device and task.
+  - **Live:** devices subscribe to the space, so a change reaches open devices in about a second.
+  - **Offline:** relays hold the events. A device that comes back fetches everything since its last sync (with a 24 h overlap to tolerate clock skew).
+  - **Outbox:** local edits go into an `outbox` table first and are sent when a relay is reachable. Nothing is lost if the app is closed while offline.
+- **Presence:** each device publishes an encrypted "device" event (name, last seen) every 5 minutes, which fills the device list.
 
-## Intended design
+## Spaces, keys and pairing
 
-1. **Space and pairing.** The first device creates a *space*: a random room id plus a secret key. Other devices join by scanning a QR code or opening a link that carries both (in the URL fragment, which is never sent to a server). The space id, secret, and chosen signaling settings are stored in `settings`.
-2. **Transport.** WebRTC data channels directly between devices. Only the connection handshake goes through a public signaling service. Candidates: [Trystero](https://github.com/dmotz/trystero), which can signal over public Nostr relays, BitTorrent trackers or MQTT brokers, so no server of our own is needed. Payloads are end-to-end encrypted with the space secret, so relays see only opaque handshakes. A public STUN server is enough for most networks. Some NATs also need a TURN relay; that is the one piece that may need a hosted service.
-3. **Replication.** On connect, peers exchange "everything changed since your last sync" (`updated_at > cursor`). Rows merge per row by last writer wins, tie-broken by `deviceId`. Before relying on device clocks, `updated_at` should become a hybrid logical clock (HLC), so a device with a wrong clock can't win every conflict.
-4. **Field-level merges (optional, later).** If editing the same task on two devices becomes common, track per-field clocks or move to a CRDT (Yjs/Automerge, or cr-sqlite for SQLite) so a title edit and a date change on different devices both survive.
-5. **Both devices offline.** Sync is opportunistic: devices only exchange data while both are online. A small always-on relay peer would remove that limit, at the cost of hosting it.
+- A **space** is a random 32-byte key. Everyone who has it can read and change every task in that space. That's how both "my devices" and "shared with another person" work.
+- From the space key, HMAC-SHA-256 derives:
+  - a public **space tag** (`#w`) that relays use to route events,
+  - an **AES-GCM key** for all event content,
+  - per-item **d-tags**, so relays can't link events to task ids.
+- Each device signs its events with its own Nostr key (stored only on that device).
+- **What relays can see:** the space tag, device public keys, event times and sizes. **What they can't see:** titles, notes, dates or device names.
 
-## Schema changes this will need
+**Pairing by code.** On a device in the space, Sync → *Add a device or person* creates a 12-character code (60 bits, Crockford base32, e.g. `7K4M-Q9TX-2HBF`).
 
-- `tasks.hlc TEXT` (or replace `updated_at`) and `tasks.updated_by TEXT` (device id).
-- `peers` table: device id, name, last-sync cursor.
-- `space` settings: room id, encrypted secret, signaling choice.
+1. The code is stretched with PBKDF2 (250k iterations) into an invite tag and an AES key.
+2. The space key, name and relay list are encrypted with that key and published as an event that expires after 10 minutes (NIP-40). The event is signed with a throwaway key.
+3. The new device derives the same tag and key from the typed code, fetches the invite and joins.
 
-Add these with `npm run db:generate` like any other migration.
+Because of the key stretching, guessing a code from a captured invite costs 250k hashes per guess across 2^60 possible codes.
+
+When joining, the new device either **uses the shared tasks** (its own are removed first; the default when it has only the example tasks) or **adds its tasks too**.
+
+## Limits and next steps
+
+- **Removing a member** isn't possible yet: anyone who joined keeps the key. Fixing it needs key rotation, i.e. a new space key sent to the remaining devices.
+- **Relay retention** varies by relay. Using several relays helps. A relay that drops old events is covered as long as another relay in the list kept them.
+- **History and conflict display** would need a change log with per-field parent pointers (see the discussion in git history / issue tracker).
+- Every task is a separate event, so the first sync of a large planner sends one event per task, throttled to stay under relay rate limits.
+
+## Developing
+
+```sh
+npm run relay                                       # local relay on ws://localhost:7777
+VITE_DEFAULT_RELAYS=ws://localhost:7777 npm run dev # app that uses it
+```
+
+Open the app in two browser profiles (or a normal and a private window) to act as two devices.
+
+Code: `src/sync/hlc.ts` (clock), `merge.ts` (merge rule), `crypto.ts` (keys, pairing), `engine.svelte.ts` (relays, outbox, pairing flow). Tests: `src/sync/sync.test.ts`.

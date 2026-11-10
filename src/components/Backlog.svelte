@@ -52,7 +52,7 @@
 
   <p class="storage" class:warn={!app.persistent}>
     {#if app.persistent}
-      Saved in this browser only. Export a backup from the menu.
+      {app.settings.sync ? 'Saved in this browser and synced.' : 'Saved in this browser only. Turn on Sync to use it on other devices.'}
     {:else}
       This browser can't keep data here, so changes are lost when you close the page. Try a regular (not private)
       window in an up-to-date browser.
