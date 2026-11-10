@@ -129,10 +129,38 @@ export class SyncEngine {
   private devicesMap = new Map<string, Device>();
   private onOnline = () => {
     this.status = 'connecting';
+    this.dropDeadRelays();
     this.restartSubscription();
     this.scheduleFlush(0);
   };
   private onOffline = () => (this.status = 'offline');
+  /**
+   * Phones drop sockets of backgrounded apps, and the 'online' event doesn't
+   * always fire after sleep. So whenever the app is shown again, re-subscribe
+   * (fetching what was missed) and send the outbox, at most every 5 seconds.
+   */
+  private lastWake = 0;
+  private onVisible = () => {
+    if (document.visibilityState !== 'visible' || !this.space || !navigator.onLine) return;
+    if (Date.now() - this.lastWake < 5_000) return;
+    this.lastWake = Date.now();
+    if (this.status !== 'online') this.status = 'connecting';
+    this.dropDeadRelays();
+    this.restartSubscription();
+    this.scheduleFlush(0);
+  };
+
+  /**
+   * nostr-tools waits 10 s or more before reconnecting a dropped relay, and a new
+   * subscription reuses that waiting connection. Discard dead connections so the
+   * next subscribe/publish opens fresh ones right away.
+   */
+  private dropDeadRelays() {
+    if (!this.pool || !this.space) return;
+    const st = this.pool.listConnectionStatus();
+    const dead = this.space.relays.filter((r) => !st.get(safeNormalize(r)));
+    if (dead.length) this.pool.close(dead);
+  }
 
   constructor(private host: SyncHost) {}
 
@@ -165,6 +193,9 @@ export class SyncEngine {
     this.status = navigator.onLine ? 'connecting' : 'offline';
     window.addEventListener('online', this.onOnline);
     window.addEventListener('offline', this.onOffline);
+    document.addEventListener('visibilitychange', this.onVisible);
+    window.addEventListener('pageshow', this.onVisible);
+    this.lastWake = Date.now();
     this.restartSubscription();
     this.timers.push(setInterval(() => this.scheduleFlush(0), 30_000));
     this.timers.push(setInterval(() => void this.announce(), PRESENCE_EVERY_MS));
@@ -182,6 +213,8 @@ export class SyncEngine {
     clearTimeout(this.inboxTimer);
     window.removeEventListener('online', this.onOnline);
     window.removeEventListener('offline', this.onOffline);
+    document.removeEventListener('visibilitychange', this.onVisible);
+    window.removeEventListener('pageshow', this.onVisible);
     this.pool?.destroy();
     this.pool = null;
     this.keys = null;
