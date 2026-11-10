@@ -40,11 +40,35 @@ const LOOKBACK_S = 24 * 3600; // re-read a day of events to tolerate clock skew 
 const PRESENCE_EVERY_MS = 5 * 60_000;
 
 export const DEFAULT_RELAYS: string[] = (
-  import.meta.env.VITE_DEFAULT_RELAYS ?? 'wss://relay.damus.io,wss://nos.lol,wss://relay.primal.net,wss://nostr.mom'
+  import.meta.env.VITE_DEFAULT_RELAYS ??
+  // Chosen with Relays → Test relays: these accept, store and return Weekly's events.
+  'wss://relay.snort.social,wss://offchain.pub,wss://nostr.oxtr.dev,wss://relay.nostr.net,wss://nos.lol,wss://relay.damus.io'
 )
   .split(',')
   .map((s: string) => s.trim())
   .filter(Boolean);
+
+const FIRST_DEFAULTS = ['wss://relay.damus.io', 'wss://nos.lol', 'wss://relay.primal.net', 'wss://nostr.mom'];
+const sameSet = (a: string[], b: string[]) => a.length === b.length && b.every((x) => a.includes(x));
+
+/** More public relays, tried by the relay test and when looking up pairing codes. */
+export const CANDIDATE_RELAYS = [
+  'wss://relay.damus.io',
+  'wss://nos.lol',
+  'wss://relay.primal.net',
+  'wss://nostr.mom',
+  'wss://relay.nostr.band',
+  'wss://relay.snort.social',
+  'wss://offchain.pub',
+  'wss://nostr.oxtr.dev',
+  'wss://relay.nostr.bg',
+  'wss://nostr-pub.wellorder.net',
+  'wss://nostr.bitcoiner.social',
+  'wss://relay.nostr.net',
+];
+
+/** Where pairing codes are posted and looked up: wide, so two devices on different networks overlap. */
+const pairingRelays = (extra: string[] = []) => [...new Set([...extra, ...DEFAULT_RELAYS, ...CANDIDATE_RELAYS])];
 
 export interface SpaceConfig {
   /** Base64url space key. Whoever has it can read and write the space. */
@@ -124,11 +148,18 @@ export class SyncEngine {
 
   async start() {
     this.space = this.host.getSetting<SpaceConfig>('sync') ?? null;
+    // Spaces created with the first release's defaults: primal doesn't store our events
+    // and the rest are blocked on many networks, so move them to the current defaults.
+    if (this.space && sameSet(this.space.relays, FIRST_DEFAULTS)) {
+      this.space = { ...this.space, relays: [...DEFAULT_RELAYS] };
+      await this.host.setSetting('sync', this.space);
+    }
     await this.countPending();
     if (!this.space) return;
     this.secret = await this.ensureDeviceKey();
     this.keys = await deriveSpace(fromB64(this.space.key));
     this.pool = new SimplePool({ enablePing: true, enableReconnect: true });
+    this.startedAt = Date.now();
     this.pool.onRelayConnectionSuccess = () => this.refreshRelayState();
     this.pool.onRelayConnectionFailure = () => this.refreshRelayState();
     this.status = navigator.onLine ? 'connecting' : 'offline';
@@ -171,6 +202,8 @@ export class SyncEngine {
     return this.secret ? getPublicKey(this.secret) : null;
   }
 
+  private startedAt = 0;
+
   private refreshRelayState() {
     if (!this.pool || !this.space) return;
     const st = this.pool.listConnectionStatus();
@@ -180,6 +213,10 @@ export class SyncEngine {
     const any = Object.values(next).some(Boolean);
     if (!navigator.onLine) this.status = 'offline';
     else if (!any && this.status === 'online') this.status = 'connecting';
+    if (!any && navigator.onLine && Date.now() - this.startedAt > 12_000)
+      this.lastError =
+        "Can't reach any relay from this network. A firewall, VPN, DNS filter or browser extension may be blocking them. Open Relays → Test relays.";
+    else if (any && this.lastError?.startsWith("Can't reach any relay")) this.lastError = null;
   }
 
   // ---------- receiving ----------
@@ -350,8 +387,7 @@ export class SyncEngine {
       await Promise.any(this.pool.publish(this.space.relays, ev, { maxWait: 8000 }));
       return true;
     } catch (err) {
-      const reasons = (err as AggregateError).errors?.map((e) => String(e?.message ?? e)) ?? [String(err)];
-      this.lastError = `No relay accepted the change: ${reasons[0]}`;
+      this.lastError = `No relay accepted the change. ${relayReasons(err)}`;
       return false;
     }
   }
@@ -385,11 +421,10 @@ export class SyncEngine {
       },
       generateSecretKey(), // throwaway key: the invite isn't linked to this device
     );
-    const relays = [...new Set([...this.space.relays, ...DEFAULT_RELAYS])];
     try {
-      await Promise.any(this.pool.publish(relays, ev, { maxWait: 8000 }));
-    } catch {
-      throw new Error("Couldn't reach any relay to post the code. Check your connection and try again.");
+      await Promise.any(this.pool.publish(pairingRelays(this.space.relays), ev, { maxWait: 8000 }));
+    } catch (err) {
+      throw new Error(`No relay accepted the code. ${relayReasons(err)} Open Relays → Test relays to see which relays work from here.`);
     }
     return { code, expiresAt: (now + INVITE_TTL_S) * 1000 };
   }
@@ -401,7 +436,7 @@ export class SyncEngine {
     const { tag, aes } = await derivePairing(code);
     const pool = new SimplePool();
     try {
-      const events = await pool.querySync(DEFAULT_RELAYS, { kinds: [KIND], '#d': [tag] }, { maxWait: 6000 });
+      const events = await pool.querySync(pairingRelays(), { kinds: [KIND], '#d': [tag] }, { maxWait: 8000 });
       const now = Date.now() / 1000;
       const live = events
         .filter((e) => Number(e.tags.find((t) => t[0] === 'expiration')?.[1] ?? Infinity) > now)
@@ -451,6 +486,13 @@ export class SyncEngine {
     this.pending = 0;
     this.lastSyncAt = null;
   }
+}
+
+/** Summarize why every relay refused, e.g. "relay.primal.net: blocked: kind not allowed". */
+function relayReasons(err: unknown): string {
+  const errs = (err as AggregateError)?.errors ?? [err];
+  const msgs = [...new Set(errs.map((e) => String((e as Error)?.message ?? e).slice(0, 100)))];
+  return `Relays said: ${msgs.slice(0, 3).join('; ')}.`;
 }
 
 function isTaskShape(t: unknown): t is Task {

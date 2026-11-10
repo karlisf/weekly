@@ -1,6 +1,7 @@
 <script lang="ts">
   import { app } from '../lib/store.svelte';
-  import { DEFAULT_RELAYS, guessDeviceName, type Invite } from '../sync/engine.svelte';
+  import { CANDIDATE_RELAYS, DEFAULT_RELAYS, guessDeviceName, type Invite } from '../sync/engine.svelte';
+  import { testRelay, usable, type RelayTestResult } from '../sync/relaytest';
   import { formatCode } from '../sync/crypto';
   import { isExampleTask } from '../lib/seed';
   import Icon from './Icon.svelte';
@@ -29,6 +30,21 @@
   let nameInput = $state('');
   let spaceName = $state('');
   let confirmLeave = $state(false);
+  let testing = $state(false);
+  let results = $state<RelayTestResult[]>([]);
+
+  async function runTest() {
+    testing = true;
+    const urls = [...new Set([...(sync.space?.relays ?? []), ...CANDIDATE_RELAYS])];
+    results = urls.map((url) => ({ url, connects: false, accepts: false, acceptsExpiring: false, findable: false, note: 'Testing…' }));
+    await Promise.all(
+      urls.map(async (url, i) => {
+        results[i] = await testRelay(url);
+      }),
+    );
+    testing = false;
+  }
+  const working = $derived(results.filter(usable).map((r) => r.url));
 
   $effect(() => {
     if (open && !dialog.open) {
@@ -190,7 +206,9 @@
             <li class="muted">Looking for other devices…</li>
           {/each}
         </ul>
-        <button class="btn primary" disabled={busy} onclick={makeInvite}><Icon name="plus" />Add a device or person</button>
+        <button class="btn primary" disabled={busy} onclick={makeInvite}>
+          <Icon name="plus" />{busy ? 'Posting code…' : 'Add a device or person'}
+        </button>
       </section>
 
       <section>
@@ -283,6 +301,36 @@
         <label for="relays">One relay per line</label>
         <textarea id="relays" rows="5" bind:value={relaysText} spellcheck="false"></textarea>
       </div>
+      <section class="test">
+        <div class="row">
+          <button class="btn" disabled={testing} onclick={runTest}>{testing ? 'Testing relays…' : 'Test relays'}</button>
+          {#if !testing && working.length}
+            <button
+              class="btn primary"
+              disabled={busy}
+              onclick={() =>
+                run(async () => {
+                  await sync.setRelays(working);
+                  relaysText = working.join('\n');
+                })}>Use the {working.length} working {working.length === 1 ? 'relay' : 'relays'}</button
+            >
+          {/if}
+        </div>
+        {#if results.length}
+          <ul class="results">
+            {#each results as r (r.url)}
+              <li class:ok={usable(r)} class:bad={r.note !== 'Testing…' && !usable(r)}>
+                <span class="dot" class:on={usable(r)}></span>
+                <span class="rurl">{r.url.replace('wss://', '')}</span>
+                <span class="rnote">{r.note}</span>
+              </li>
+            {/each}
+          </ul>
+          {#if !testing && !working.length}
+            <p class="error">No relay works from this network. Try another network (for example your phone's mobile data), or turn off VPN, DNS filtering or blocking extensions for this site.</p>
+          {/if}
+        {/if}
+      </section>
       <div class="row">
         <button
           class="btn primary"
@@ -506,6 +554,37 @@
   }
   .row input {
     flex: 1;
+  }
+  .results {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin: 12px 0 0;
+    padding: 0;
+    list-style: none;
+    font-size: 13px;
+  }
+  .results li {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    align-items: center;
+    gap: 2px 10px;
+  }
+  .rurl {
+    font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+    overflow-wrap: anywhere;
+  }
+  .rnote {
+    grid-column: 2;
+    color: var(--ink-3);
+    font-size: 12.5px;
+    overflow-wrap: anywhere;
+  }
+  .results li.ok .rnote {
+    color: var(--done);
+  }
+  .results li.bad .rnote {
+    color: var(--late);
   }
   .meta-links {
     display: flex;
