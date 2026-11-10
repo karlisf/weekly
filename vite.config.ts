@@ -12,7 +12,9 @@ export default defineConfig({
   plugins: [
     svelte(),
     VitePWA({
-      registerType: 'prompt',
+      // New versions activate right away and the page reloads once, so a fix
+      // reaches every device on its next start without a prompt.
+      registerType: 'autoUpdate',
       injectRegister: false,
       includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
       manifest: {
@@ -33,6 +35,10 @@ export default defineConfig({
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,woff2,wasm}'],
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
+        // Take over from an older service worker as soon as this one installs,
+        // without waiting for every tab to close (pairs with registerType autoUpdate).
+        skipWaiting: true,
+        clientsClaim: true,
       },
     }),
   ],

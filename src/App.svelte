@@ -39,11 +39,10 @@
     if (!layout.wide) backlogOpen = false;
   };
 
-  const { needRefresh, updateServiceWorker } = useRegisterSW({
+  // autoUpdate: a new service worker takes over and the page reloads itself.
+  useRegisterSW({
+    immediate: true,
     onRegisterError: (e) => console.warn('Service worker registration failed', e),
-  });
-  $effect(() => {
-    if ($needRefresh) app.toast('A new version of Weekly is ready.', { label: 'Reload', run: () => updateServiceWorker(true) }, 60_000);
   });
 
   $effect(() => {
