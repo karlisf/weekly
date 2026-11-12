@@ -13,12 +13,12 @@ npm run preview    # serve dist/ (service worker active)
 
 ## What it does
 
-- **Week view**, Monday first. Weekdays share the width, the weekend gets narrower columns, and today is wider and highlighted. Use ← / → or the arrows to move between weeks, `T` to go back to this week.
+- **Week view**, Monday first. Weekdays share the width, the weekend gets narrower columns, and today is wider and highlighted. Use ← / → or the arrows to move between weeks, `T` to go back to this week. Tap the week label to pick any date and jump to it.
 - **Add** a task on any day with the column's "Add task" button (or `N` for today).
 - **Drag and drop** cards between days, into or out of the backlog, and up or down within a day. On touch screens, press and hold a card to pick it up.
 - **Task details**: click a card to edit the title, notes, day, and an optional end day.
 - **Multi-day tasks** show on every day of their span. The first day, today and Monday show a full card; the days in between show a slim line.
-- **Delayed**: an open task whose last day has passed. It stays visible on its old day and is also listed under Delayed in the backlog.
+- **Delayed**: an open task whose last day has passed. It stays visible on its old day and is also listed under Delayed in the backlog. A setting (off by default) also carries delayed tasks over to today's column.
 - **No date**: tasks without a day. They are listed in the backlog and also shown on today's column with a dashed outline (you can turn this off in Settings).
 - **Sync** across devices and people via public Nostr relays, with code pairing (see below).
 - Backup export/import (JSON, merged with the same rule as sync) and a raw `.sqlite3` download, in Settings.
