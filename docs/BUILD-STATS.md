@@ -1,8 +1,18 @@
 # What it took to build Weekly (so far)
 
-The app was built in one Claude Code session, from an empty folder to a deployed PWA with multi-device sync. Claude wrote all code; the owner gave direction, tested in real browsers and reported problems. Times below are elapsed time since the session started.
+The app was built in Claude Code sessions. Session 1 went from an empty folder to a deployed PWA with multi-device sync. Session 2 fixed what the owner found using it on a real phone. Claude wrote all code; the owner gave direction, tested in real browsers and phones, and reported problems. Times below are elapsed time since each session started.
 
-## Totals
+## All sessions
+
+| | Session 1 (Nov 10) | Session 2 (Nov 12) | Total |
+|---|---|---|---|
+| Session length (wall clock) | 2 h 12 min | 36 min | 2 h 48 min |
+| Model requests (Opus 5.5) | 169 | 72 | 241 |
+| Tokens | ≈ 37.8 M | ≈ 8.1 M | ≈ 45.9 M |
+| Cost at API list prices | $14.71 | $3.50 | **$18.21** |
+| Commits | 7 | 8 (including this stats update) | 15, plus 2 docs commits made after session 1 |
+
+## Session 1 totals
 
 | | |
 |---|---|
@@ -21,14 +31,14 @@ Source: Claude Code's `/cost` at the end of the session, cross-checked against t
 
 | | |
 |---|---|
-| Hand-written source | ≈ 5,700 lines in 42 files (TypeScript 2,371 · Svelte 2,798 · CSS 209 · dev relay 73 · SQL 25 · CI 44) |
-| Largest files | `SyncDialog.svelte` 708 · `sync/engine.svelte.ts` 567 · `App.svelte` 475 · `lib/store.svelte.ts` 460 |
+| Hand-written source | ≈ 5,700 lines in 42 files after session 1 (TypeScript 2,371 · Svelte 2,798 · CSS 209 · dev relay 73 · SQL 25 · CI 44); session 2 added 291 and removed 59 lines |
+| Largest files (after session 2) | `SyncDialog.svelte` 767 · `sync/engine.svelte.ts` 585 · `App.svelte` 546 · `lib/store.svelte.ts` 469 |
 | Unit tests | 18 (week maths, planning rules, sync clock, merge rule, encryption, pairing codes) |
 | Database migrations | 2 (initial schema; sync clocks + outbox) |
 | Built site | 2.0 MB, about 0.5 MB gzipped on first load (the SQLite engine is 412 kB of that) |
 | Stack | Svelte 5, Vite 8, TypeScript, SQLite WASM on OPFS, Drizzle ORM, nostr-tools, vite-plugin-pwa |
 
-## Timeline
+## Session 1 timeline
 
 | Elapsed | Commit | What happened |
 |---|---|---|
@@ -55,7 +65,33 @@ Source: Claude Code's `/cost` at the end of the session, cross-checked against t
   - a simulated phone sleep and wake.
 - **The owner**, testing the live site in a real browser. That is how both production issues were found.
 
-These browser scripts are not in the repository yet.
+These browser scripts were added to `e2e/` after the session (`ce35291`), as-is; making them a CI suite is item 1 in TODO.md.
+
+## Session 2: fixes from real-phone use
+
+| | |
+|---|---|
+| Session length (wall clock) | **36 min** |
+| Model working time | **≈ 7 min**, estimated from transcript timestamps (`/cost` is not available from inside the session) |
+| Model requests | 72 to Claude Opus 5.5, no subagents |
+| Tokens | ≈ 8.13 M in total: 7.96 M cache reads, 127.9 k cache writes, 44.3 k output, 162 uncached input |
+| Prompt cache hit rate | 98 % of input tokens |
+| Cost at API list prices | **$3.50** |
+| Code changes | 16 files, 291 lines added, 59 removed |
+
+Source: the session transcript (token usage per request, deduplicated by message id), up to the request that wrote this section.
+
+| Elapsed | Commit | What happened |
+|---|---|---|
+| 0:00 | | Owner's phone screenshot: the Today button overlapped the sync icon. Also asked for a date picker and a "delayed tasks on today" setting |
+| 0:06 | `e7c0884` | Today button moved into the action row on phones; logo hides below 360px |
+| 0:07 | `f7e84b4` | Tap the week label to open the date picker and jump to that day; phones drop the year from the range |
+| 0:08 | `5065227` | Setting (off by default): carry delayed tasks over to today's column |
+| 0:16 | `bbf20fc` | Owner: editing the device name changed nothing. It saved only on blur and reached other devices only with the 5-minute presence ping. Now renamed in place in the device list and announced at once (205 ms to the other device in a test) |
+| 0:24 | `eb91da5`, `c5bf674` | Owner asked for phone and desktop checks to be permanent project knowledge: added CLAUDE.md. The phone check found the rename field squeezed at 320px; fixed |
+| 0:35 | `09cd597` | Owner: the planner name and "Add a device or person" were confusing. A device belongs to one planner, and pairing is per device, so the planner name field is gone and the button says "Add a device" |
+
+Verified with headless Chromium at phone widths 320, 375 and 412px and on desktop at 1440px, with two-device sync tests through the local relay, plus the unit tests and type check. The native date picker itself can't be shown headless and is left for a real phone.
 
 ## Notes on the numbers
 
