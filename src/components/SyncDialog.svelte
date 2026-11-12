@@ -234,8 +234,10 @@
                       }
                     }}
                   />
-                  <button class="btn small primary" disabled={busy || !renameInput.trim()}>Save</button>
-                  <button type="button" class="btn small" onclick={() => (renaming = false)}>Cancel</button>
+                  <span class="rename-actions">
+                    <button class="btn small primary" disabled={busy || !renameInput.trim()}>Save</button>
+                    <button type="button" class="btn small" onclick={() => (renaming = false)}>Cancel</button>
+                  </span>
                 </form>
               {:else if d.me}
                 <span class="dname">{d.name}<span class="me">This device</span></span>
@@ -576,12 +578,20 @@
   .rename {
     display: flex;
     flex: 1;
+    flex-wrap: wrap;
+    justify-content: flex-end;
     gap: 6px;
     min-width: 0;
+    padding: 2px 0;
   }
+  /* On narrow phones the buttons wrap below the field rather than squeezing it. */
   .rename input {
-    flex: 1;
+    flex: 1 1 160px;
     height: 34px;
+  }
+  .rename-actions {
+    display: flex;
+    gap: 6px;
   }
   .icon-btn.small {
     width: 30px;
