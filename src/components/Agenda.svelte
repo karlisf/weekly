@@ -11,10 +11,11 @@
     document.getElementById(`day-${day}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
-  // Bring today into view when the current week is shown.
+  // Bring the picked day, else today, into view when its week is shown.
   $effect(() => {
     if (app.status.kind !== 'ready') return;
-    if (days.includes(app.today)) requestAnimationFrame(() => jump(app.today));
+    const target = app.focusDay && days.includes(app.focusDay) ? app.focusDay : days.includes(app.today) ? app.today : null;
+    if (target) requestAnimationFrame(() => jump(target));
     else window.scrollTo({ top: 0 });
   });
 </script>

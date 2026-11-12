@@ -3,7 +3,7 @@
   import { app } from './lib/store.svelte';
   import { drag } from './lib/dnd.svelte';
   import { layout } from './lib/layout.svelte';
-  import { isoWeek, startOfWeek, weekRangeLabel } from './lib/dates';
+  import { isoWeek, isValidDay, parseDay, startOfWeek, weekDays, weekRangeLabel } from './lib/dates';
   import { delayedTasks, unscheduledTasks } from './lib/plan';
   import WeekGrid from './components/WeekGrid.svelte';
   import Agenda from './components/Agenda.svelte';
@@ -28,6 +28,21 @@
           : 'Synced',
   );
   let installEvent = $state<(Event & { prompt: () => Promise<void> }) | null>(null);
+
+  let dateInput: HTMLInputElement;
+
+  /** Open the browser's date picker on the day in view; picking a date jumps to its week. */
+  function pickDate() {
+    const days = weekDays(app.weekStart);
+    dateInput.value = app.focusDay && days.includes(app.focusDay) ? app.focusDay : days.includes(app.today) ? app.today : app.weekStart;
+    try {
+      dateInput.showPicker();
+    } catch {
+      // Older browsers without showPicker(): focusing the field still lets you type a date.
+      dateInput.focus();
+      dateInput.click();
+    }
+  }
 
   const isCurrentWeek = $derived(app.weekStart === startOfWeek(app.today));
   const delayedCount = $derived(delayedTasks(app.tasks, app.today).length);
@@ -84,9 +99,22 @@
 
     <div class="week">
       <button class="icon-btn" aria-label="Previous week" onclick={() => app.goWeek(-1)}><Icon name="left" /></button>
-      <h1 class="week-label">
-        <span class="wk">Week {isoWeek(app.weekStart)}</span>
-        <span class="range">{weekRangeLabel(app.weekStart)}</span>
+      <h1 class="week-title">
+        <button class="week-label" aria-haspopup="dialog" title="Jump to a date" onclick={pickDate}>
+          <span class="wk">Week {isoWeek(app.weekStart)}</span>
+          <span class="range">{weekRangeLabel(app.weekStart, layout.mobile ? parseDay(app.today).getFullYear() : undefined)}</span>
+        </button>
+        <input
+          bind:this={dateInput}
+          class="date-input"
+          type="date"
+          tabindex="-1"
+          aria-hidden="true"
+          onchange={(e) => {
+            const v = e.currentTarget.value;
+            if (isValidDay(v)) app.goToDay(v);
+          }}
+        />
       </h1>
       <button class="icon-btn" aria-label="Next week" onclick={() => app.goWeek(1)}><Icon name="right" /></button>
       {#if !isCurrentWeek && !layout.mobile}
@@ -224,15 +252,44 @@
     gap: 4px;
     min-width: 0;
   }
+  .week-title {
+    position: relative;
+    display: flex;
+    min-width: 0;
+    margin: 0 2px;
+    font-size: inherit;
+    font-weight: inherit;
+  }
   .week-label {
     display: flex;
     align-items: baseline;
     gap: 10px;
-    margin: 0 6px;
     min-width: 0;
-    font-size: inherit;
-    font-weight: inherit;
+    padding: 4px 8px;
+    border: 0;
+    border-radius: var(--r-sm);
+    background: transparent;
+    color: inherit;
+    font: inherit;
     white-space: nowrap;
+    cursor: pointer;
+  }
+  @media (hover: hover) {
+    .week-label:hover {
+      background: var(--accent-soft);
+    }
+  }
+  /* Invisible anchor for the native date picker, under the week label. */
+  .date-input {
+    position: absolute;
+    left: 50%;
+    bottom: 0;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    border: 0;
+    opacity: 0;
+    pointer-events: none;
   }
   .wk {
     font-family: var(--font-display);
@@ -444,11 +501,14 @@
       flex: 1;
       justify-content: center;
     }
+    .week-title {
+      margin: 0;
+    }
     .week-label {
       flex-direction: column;
       align-items: center;
       gap: 0;
-      margin: 0 2px;
+      padding: 2px 4px;
       line-height: 1.15;
     }
     .wk {

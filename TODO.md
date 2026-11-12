@@ -46,7 +46,7 @@ Recommended order: 1, then 2. Everything after that builds on tested code.
 - [ ] **10. Faster entry and navigation**
   - Typing "Dentist fri" puts the task on Friday.
   - Search across tasks.
-  - Jump to any date.
+  - ~~Jump to any date.~~ Done: tap the week label in the top bar.
 
 - [ ] **11. Tags or colours**
   - To group tasks.

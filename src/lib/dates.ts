@@ -66,10 +66,16 @@ export function fmt(day: Day, opts: Intl.DateTimeFormatOptions): string {
 }
 
 const rangeFmt = new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+const shortRangeFmt = new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short' });
 
-/** Locale-aware range, e.g. "Nov 9 – 15, 2026" or "9–15 Nov 2026". */
-export function weekRangeLabel(weekStart: Day): string {
-  return rangeFmt.formatRange(parseDay(weekStart), parseDay(addDays(weekStart, 6)));
+/**
+ * Locale-aware range, e.g. "Nov 9 – 15, 2026" or "9–15 Nov 2026".
+ * With `omitYearIn`, the year is left out when the whole week falls in that year.
+ */
+export function weekRangeLabel(weekStart: Day, omitYearIn?: number): string {
+  const end = addDays(weekStart, 6);
+  const sameYear = omitYearIn != null && weekStart.startsWith(`${omitYearIn}-`) && end.startsWith(`${omitYearIn}-`);
+  return (sameYear ? shortRangeFmt : rangeFmt).formatRange(parseDay(weekStart), parseDay(end));
 }
 
 /** Human distance from today: "today", "yesterday", "3 days ago", "in 2 days". */

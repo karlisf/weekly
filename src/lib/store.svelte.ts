@@ -289,6 +289,12 @@ class AppStore {
     this.focusDay = null;
   }
 
+  /** Show the week containing `day` with that day in focus (widened on desktop, scrolled to on phones). */
+  goToDay(day: Day) {
+    this.weekStart = startOfWeek(day);
+    this.focusDay = day;
+  }
+
   goToday() {
     this.weekStart = startOfWeek(this.today);
     this.focusDay = null;
