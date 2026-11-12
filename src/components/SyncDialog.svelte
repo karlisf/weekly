@@ -28,7 +28,6 @@
   // relays / name
   let relaysText = $state('');
   let nameInput = $state('');
-  let spaceName = $state('');
   let confirmLeave = $state(false);
   let renaming = $state(false);
   let renameInput = $state('');
@@ -72,7 +71,6 @@
     confirmLeave = false;
     renaming = false;
     nameInput = app.settings.deviceName || guessDeviceName();
-    spaceName = '';
   }
 
   async function run(fn: () => Promise<void>) {
@@ -106,7 +104,7 @@
   const start = () =>
     run(async () => {
       await saveName();
-      await sync.createSpace(spaceName);
+      await sync.createSpace();
     });
 
   const lookUp = () =>
@@ -120,7 +118,7 @@
     run(async () => {
       await saveName();
       await sync.acceptInvite(found!, mode);
-      app.toast(`Joined "${found!.name}". Your tasks will appear as they arrive.`);
+      app.toast('Joined. Your tasks will appear as they arrive.');
       found = null;
       view = 'home';
     });
@@ -170,7 +168,7 @@
         </button>
       {/if}
       <h2 id="sync-h">
-        {view === 'join' ? 'Join with a code' : view === 'invite' ? 'Add a device or person' : view === 'relays' ? 'Relays' : 'Sync'}
+        {view === 'join' ? 'Join with a code' : view === 'invite' ? 'Add a device' : view === 'relays' ? 'Relays' : 'Sync'}
       </h2>
       <button class="icon-btn" aria-label="Close" onclick={() => (open = false)}><Icon name="close" /></button>
     </div>
@@ -188,10 +186,6 @@
         <div class="choice">
           <h3>First device</h3>
           <p>Start a shared planner with the tasks you have here.</p>
-          <div class="field">
-            <label for="space-name">Planner name</label>
-            <input id="space-name" bind:value={spaceName} placeholder="My planner" maxlength="60" />
-          </div>
           <button class="btn primary" disabled={busy} onclick={start}><Icon name="cloud" />Start syncing</button>
         </div>
         <div class="choice">
@@ -208,7 +202,7 @@
       </div>
 
       <section>
-        <h3>{sync.space.name}</h3>
+        <h3>Devices</h3>
         <ul class="devices">
           {#each sync.devices as d (d.pubkey)}
             <li>
@@ -254,8 +248,9 @@
           {/each}
         </ul>
         <button class="btn primary" disabled={busy} onclick={makeInvite}>
-          <Icon name="plus" />{busy ? 'Posting code…' : 'Add a device or person'}
+          <Icon name="plus" />{busy ? 'Posting code…' : 'Add a device'}
         </button>
+        <p class="hint">Yours, or the device of someone you want to share this planner with.</p>
       </section>
 
       <section class="meta-links">
@@ -275,7 +270,7 @@
       {#if sync.lastError}<p class="error">{sync.lastError}</p>{/if}
     {:else if view === 'join'}
       {#if !found}
-        <p class="lead">On a device that already syncs, open Sync → Add a device or person. Enter the code it shows.</p>
+        <p class="lead">On a device that already syncs, open Sync → Add a device. Enter the code it shows.</p>
         <form
           class="code-form"
           onsubmit={(e) => {
@@ -299,7 +294,7 @@
           </button>
         </form>
       {:else}
-        <p class="lead">Found <strong>{found.name}</strong>, shared from {found.from}.</p>
+        <p class="lead">Found a planner shared from <strong>{found.from}</strong>.</p>
         <fieldset class="modes">
           <legend class="sr-only">What happens to the tasks on this device</legend>
           <label class:on={mode === 'replace'}>
@@ -311,7 +306,7 @@
             <span><strong>Add my tasks too</strong><small>Shares the {app.tasks.length} tasks on this device with everyone in the planner.</small></span>
           </label>
         </fieldset>
-        <button class="btn primary" disabled={busy} onclick={join}>{busy ? 'Joining…' : `Join "${found.name}"`}</button>
+        <button class="btn primary" disabled={busy} onclick={join}>{busy ? 'Joining…' : 'Join'}</button>
       {/if}
     {:else if view === 'invite' && invite}
       {#if joinedSinceInvite}
@@ -437,6 +432,11 @@
     letter-spacing: 0.06em;
     text-transform: uppercase;
     color: var(--ink-2);
+  }
+  .hint {
+    margin: 8px 0 0;
+    font-size: 12.5px;
+    color: var(--ink-3);
   }
   .lead {
     margin: 0;

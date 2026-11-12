@@ -9,7 +9,7 @@ async function dev() { const c = await b.newContext({ viewport: { width: 1300, h
 const waitFor = async (fn, ms) => { const t = Date.now(); while (Date.now() - t < ms) { if (await fn()) return Date.now() - t; await new Promise(r => setTimeout(r, 200)); } return null; };
 const A = await dev(), B = await dev();
 await A.click('.sync-btn'); await A.click('text=Start syncing'); await A.waitForSelector('.status[data-state="online"]');
-await A.click('text=Add a device or person'); const code = (await A.locator('output.code').textContent()).trim();
+await A.click('text=Add a device'); const code = (await A.locator('output.code').textContent()).trim();
 await B.click('.sync-btn'); await B.click('text=Join with a code'); await B.fill('#join-code', code); await B.click('button:has-text("Find")');
 await B.waitForSelector('text=Use the shared tasks'); await B.click('button:has-text("Join")'); await B.waitForTimeout(2000);
 await A.keyboard.press('Escape'); await B.keyboard.press('Escape'); await B.waitForTimeout(6000);

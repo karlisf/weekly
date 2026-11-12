@@ -22,10 +22,9 @@ const B = await device('B', { width: 390, height: 844 });
 // A starts a space
 await A.p.click('.sync-btn');
 await A.p.fill('#dev-name', 'Laptop');
-await A.p.fill('#space-name', 'Home');
 await A.p.click('text=Start syncing');
 console.log('A online:', await waitFor(async () => (await A.p.locator('.status').getAttribute('data-state')) === 'online'));
-await A.p.click('text=Add a device or person');
+await A.p.click('text=Add a device');
 const code = (await A.p.locator('output.code').textContent()).trim();
 console.log('code:', code);
 await A.p.screenshot({ path: `${S}/sync-invite.png` });

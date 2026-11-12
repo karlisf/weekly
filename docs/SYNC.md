@@ -24,7 +24,7 @@ Weekly syncs tasks between devices, and between people who share a planner, thro
 - Each device signs its events with its own Nostr key (stored only on that device).
 - **What relays can see:** the space tag, device public keys, event times and sizes. **What they can't see:** titles, notes, dates or device names.
 
-**Pairing by code.** On a device in the space, Sync → *Add a device or person* creates a 12-character code (60 bits, Crockford base32, e.g. `7K4M-Q9TX-2HBF`).
+**Pairing by code.** On a device in the space, Sync → *Add a device* creates a 12-character code (60 bits, Crockford base32, e.g. `7K4M-Q9TX-2HBF`).
 
 1. The code is stretched with PBKDF2 (250k iterations) into an invite tag and an AES key.
 2. The space key, name and relay list are encrypted with that key and published as an event that expires after 10 minutes (NIP-40). The event is signed with a throwaway key.

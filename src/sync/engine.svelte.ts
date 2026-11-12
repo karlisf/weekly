@@ -441,8 +441,12 @@ export class SyncEngine {
 
   // ---------- spaces and pairing ----------
 
-  async createSpace(name: string) {
-    const cfg: SpaceConfig = { key: toB64(randomBytes(32)), name: name.trim() || 'My planner', relays: [...DEFAULT_RELAYS], joinedAt: Date.now() };
+  /**
+   * Start a new space. A device belongs to one space at a time, so the space's name
+   * isn't shown anywhere; it is still stored and sent in invites for older versions.
+   */
+  async createSpace() {
+    const cfg: SpaceConfig = { key: toB64(randomBytes(32)), name: 'My planner', relays: [...DEFAULT_RELAYS], joinedAt: Date.now() };
     await this.host.setSetting('sync', cfg);
     await this.host.setSetting('syncCursor', 0);
     await this.start();
