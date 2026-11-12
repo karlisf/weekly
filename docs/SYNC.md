@@ -12,7 +12,7 @@ Weekly syncs tasks between devices, and between people who share a planner, thro
   - **Live:** devices subscribe to the space, so a change reaches open devices in about a second.
   - **Offline:** relays hold the events. A device that comes back fetches everything since its last sync (with a 24 h overlap to tolerate clock skew).
   - **Outbox:** local edits go into an `outbox` table first and are sent when a relay is reachable. Nothing is lost if the app is closed while offline.
-- **Presence:** each device publishes an encrypted "device" event (name, last seen) every 5 minutes, which fills the device list.
+- **Presence:** each device publishes an encrypted "device" event (name, last seen) every 5 minutes and right after it is renamed, which fills the device list. Devices are identified by their signing key, and the event is replaceable, so a new name replaces the old one everywhere.
 
 ## Spaces, keys and pairing
 

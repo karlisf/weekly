@@ -30,6 +30,8 @@
   let nameInput = $state('');
   let spaceName = $state('');
   let confirmLeave = $state(false);
+  let renaming = $state(false);
+  let renameInput = $state('');
   let testing = $state(false);
   let results = $state<RelayTestResult[]>([]);
 
@@ -68,6 +70,7 @@
     found = null;
     invite = null;
     confirmLeave = false;
+    renaming = false;
     nameInput = app.settings.deviceName || guessDeviceName();
     spaceName = '';
   }
@@ -88,6 +91,17 @@
     const v = nameInput.trim();
     if (v && v !== app.settings.deviceName) await app.setSetting('deviceName', v);
   }
+
+  function startRename(current: string) {
+    renameInput = current;
+    renaming = true;
+  }
+
+  const rename = () =>
+    run(async () => {
+      await sync.rename(renameInput);
+      renaming = false;
+    });
 
   const start = () =>
     run(async () => {
@@ -199,8 +213,39 @@
           {#each sync.devices as d (d.pubkey)}
             <li>
               <Icon name="device" />
-              <span class="dname">{d.name}{#if d.me}<span class="me">This device</span>{/if}</span>
-              <span class="seen">{d.me ? '' : ago(d.lastSeen)}</span>
+              {#if d.me && renaming}
+                <form
+                  class="rename"
+                  onsubmit={(e) => {
+                    e.preventDefault();
+                    rename();
+                  }}
+                >
+                  <!-- svelte-ignore a11y_autofocus -->
+                  <input
+                    aria-label="This device's name"
+                    bind:value={renameInput}
+                    maxlength="60"
+                    autofocus
+                    onkeydown={(e) => {
+                      if (e.key === 'Escape') {
+                        e.preventDefault();
+                        renaming = false;
+                      }
+                    }}
+                  />
+                  <button class="btn small primary" disabled={busy || !renameInput.trim()}>Save</button>
+                  <button type="button" class="btn small" onclick={() => (renaming = false)}>Cancel</button>
+                </form>
+              {:else if d.me}
+                <span class="dname">{d.name}<span class="me">This device</span></span>
+                <button class="icon-btn small" aria-label="Rename this device" title="Rename" onclick={() => startRename(d.name)}>
+                  <Icon name="edit" size={16} />
+                </button>
+              {:else}
+                <span class="dname">{d.name}</span>
+                <span class="seen">{ago(d.lastSeen)}</span>
+              {/if}
             </li>
           {:else}
             <li class="muted">Looking for other devices…</li>
@@ -209,13 +254,6 @@
         <button class="btn primary" disabled={busy} onclick={makeInvite}>
           <Icon name="plus" />{busy ? 'Posting code…' : 'Add a device or person'}
         </button>
-      </section>
-
-      <section>
-        <h3>This device</h3>
-        <div class="row">
-          <input id="dev-name2" aria-label="This device's name" bind:value={nameInput} maxlength="60" onblur={saveName} />
-        </div>
       </section>
 
       <section class="meta-links">
@@ -535,6 +573,20 @@
     font-size: 11.5px;
     font-weight: 600;
   }
+  .rename {
+    display: flex;
+    flex: 1;
+    gap: 6px;
+    min-width: 0;
+  }
+  .rename input {
+    flex: 1;
+    height: 34px;
+  }
+  .icon-btn.small {
+    width: 30px;
+    height: 30px;
+  }
   .seen {
     font-size: 12.5px;
     color: var(--ink-3);
@@ -551,9 +603,6 @@
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
-  }
-  .row input {
-    flex: 1;
   }
   .results {
     display: flex;

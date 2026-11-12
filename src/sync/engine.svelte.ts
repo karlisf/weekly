@@ -394,8 +394,22 @@ export class SyncEngine {
 
   private async announce() {
     if (!this.pubkey) return;
-    await this.publish(`device/${this.pubkey}`, { type: 'device', name: this.deviceName, lastSeen: Date.now() });
-    this.seeDevice(this.pubkey, this.deviceName, Date.now());
+    const now = Date.now();
+    this.seeDevice(this.pubkey, this.deviceName, now);
+    await this.publish(`device/${this.pubkey}`, { type: 'device', name: this.deviceName, lastSeen: now });
+  }
+
+  /**
+   * Rename this device and tell the others right away. Devices are identified by
+   * their signing key, not their name, and the presence event is replaceable, so
+   * the new name simply replaces the old one everywhere. If no relay is reachable,
+   * the next presence ping sends it.
+   */
+  async rename(name: string) {
+    name = name.trim().slice(0, 60);
+    if (!name || name === this.host.getSetting<string>('deviceName')) return;
+    await this.host.setSetting('deviceName', name);
+    await this.announce();
   }
 
   /** Sign and send one replaceable event. True if at least one relay stored it. */

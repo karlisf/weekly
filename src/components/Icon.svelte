@@ -15,6 +15,7 @@
     cloudOff: 'M3 3l18 18M8.5 6.6A6 6 0 0117.9 10a4 4 0 012.4 6.6M17 18H7a4.7 4.7 0 01-1.3-9.2',
     device: 'M8 3h8a1 1 0 011 1v16a1 1 0 01-1 1H8a1 1 0 01-1-1V4a1 1 0 011-1zM11 18h2',
     refresh: 'M20 11a8 8 0 10-2.3 5.7M20 4v7h-7',
+    edit: 'M4 20h4L19 9l-4-4L4 16v4zM13.5 6.5l4 4',
   } as const;
   let { name, size = 18 }: { name: keyof typeof paths; size?: number } = $props();
 </script>
