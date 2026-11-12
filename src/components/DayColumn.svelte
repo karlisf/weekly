@@ -3,7 +3,7 @@
   import { layout } from '../lib/layout.svelte';
   import { drag } from '../lib/dnd.svelte';
   import { fmt, isWeekend, type Day } from '../lib/dates';
-  import { placementsForDay, unscheduledTasks } from '../lib/plan';
+  import { delayedTasks, placementsForDay, unscheduledTasks } from '../lib/plan';
   import TaskCard from './TaskCard.svelte';
   import QuickAdd from './QuickAdd.svelte';
   import Icon from './Icon.svelte';
@@ -18,6 +18,7 @@
   const isPast = $derived(day < app.today);
   const weekend = $derived(isWeekend(day));
   const placements = $derived(placementsForDay(app.tasks, day, app.today, app.weekStart));
+  const carried = $derived(isToday && app.settings.delayedOnToday ? delayedTasks(app.tasks, app.today) : []);
   const anytime = $derived(isToday && app.settings.unscheduledOnToday ? unscheduledTasks(app.tasks) : []);
   const doneCount = $derived(placements.filter((p) => p.task.doneAt != null).length);
   const over = $derived(drag.active != null && drag.over?.day === day);
@@ -71,9 +72,19 @@
       </button>
     {/if}
 
+    <!-- Dropping here schedules the card on today, at the end. -->
+    {#if carried.length}
+      <div class="carried" data-drop-day={day}>
+        <div class="section-label">Late · carried over to today</div>
+        {#each carried as t (t.id)}
+          <TaskCard task={t} {day} where="delayed" />
+        {/each}
+      </div>
+    {/if}
+
     {#if anytime.length || overAnytime}
       <div class="anytime" class:over={overAnytime} data-drop-day="">
-        <div class="anytime-label">No date · pencilled in for today</div>
+        <div class="section-label">No date · pencilled in for today</div>
         {#each anytime as t (t.id)}
           <TaskCard task={t} {day} where="anytime" />
         {/each}
@@ -205,6 +216,7 @@
     opacity: 1;
   }
 
+  .carried,
   .anytime {
     display: flex;
     flex-direction: column;
@@ -214,11 +226,14 @@
     border-radius: var(--r-md);
     border: 1px dashed var(--line-strong);
   }
+  .carried {
+    border-color: color-mix(in srgb, var(--late) 45%, transparent);
+  }
   .anytime.over {
     background: var(--accent-soft);
     border-color: var(--accent);
   }
-  .anytime-label {
+  .section-label {
     font-size: 11px;
     font-weight: 650;
     letter-spacing: 0.06em;

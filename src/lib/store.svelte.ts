@@ -14,6 +14,8 @@ export interface Settings {
   theme: Theme;
   /** Show open "no date" tasks in a pencilled-in section on today's column. */
   unscheduledOnToday: boolean;
+  /** Show open delayed tasks in a "carried over" section on today's column. */
+  delayedOnToday: boolean;
   /** Random per-install id; also the node id in sync clocks. */
   deviceId: string;
   seeded: boolean;
@@ -30,6 +32,7 @@ export interface Settings {
 const DEFAULTS: Settings = {
   theme: 'system',
   unscheduledOnToday: true,
+  delayedOnToday: false,
   deviceId: '',
   seeded: false,
   deviceName: '',

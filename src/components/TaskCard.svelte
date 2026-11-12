@@ -68,7 +68,7 @@
     class:span-start={length > 1 && index === 1}
     class:span-mid={length > 1 && index > 1}
     class:drop-here={dropHere}
-    data-drop-before={task.id}
+    data-drop-before={where === 'delayed' ? undefined : task.id}
     use:draggable={{ taskId: task.id, fromDay: where === 'day' ? day : null }}
   >
     <button

@@ -79,6 +79,19 @@
       </span>
     </label>
 
+    <label class="switch">
+      <input
+        id="opt-delayed"
+        type="checkbox"
+        checked={app.settings.delayedOnToday}
+        onchange={(e) => app.setSetting('delayedOnToday', e.currentTarget.checked)}
+      />
+      <span>
+        <strong>Show delayed tasks on today</strong>
+        <small>Open tasks whose day has passed are carried over to today's column until you finish or reschedule them.</small>
+      </span>
+    </label>
+
     <section>
       <h3>Backup</h3>
       <p class="muted">
