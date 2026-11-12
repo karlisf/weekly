@@ -89,12 +89,15 @@
         <span class="range">{weekRangeLabel(app.weekStart)}</span>
       </h1>
       <button class="icon-btn" aria-label="Next week" onclick={() => app.goWeek(1)}><Icon name="right" /></button>
-      {#if !isCurrentWeek}
+      {#if !isCurrentWeek && !layout.mobile}
         <button class="btn today-btn" onclick={() => app.goToday()}>Today</button>
       {/if}
     </div>
 
     <div class="actions">
+      {#if !isCurrentWeek && layout.mobile}
+        <button class="btn today-btn" onclick={() => app.goToday()}>Today</button>
+      {/if}
       {#if !layout.wide && !layout.mobile}
         <button class="btn" aria-expanded={backlogOpen} onclick={() => (backlogOpen = !backlogOpen)}>
           <Icon name="inbox" />Backlog
@@ -452,12 +455,14 @@
       font-size: 16px;
     }
     .range {
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
       font-size: 12px;
     }
     .today-btn {
-      position: absolute;
-      right: max(52px, calc(env(safe-area-inset-right, 0px) + 44px));
       height: 28px;
+      margin: 0 2px 0 0;
       padding: 0 8px;
       font-size: 13px;
     }
@@ -470,6 +475,12 @@
     }
     .sync-btn {
       padding: 0 9px;
+    }
+  }
+  /* Very narrow phones: the logo gives way so the week and Today fit. */
+  @media (max-width: 359px) {
+    .brand {
+      display: none;
     }
   }
 </style>
